@@ -1,0 +1,36 @@
+{
+    "cmake.configureOnOpen": true,
+    "cmake.buildDirectory": "${workspaceFolder}/build-${buildType}",
+    "cmake.defaultVariants": {
+        "buildType": {
+            "default": "debug",
+            "description": "The build type.",
+            "choices": {
+                "debug": {
+                    "short": "Debug",
+                    "long": "Disable optimizations - include debug information.",
+                    "buildType": "Debug"
+                },
+                "release": {
+                    "short": "Release",
+                    "long": "Optimize for speed - exclude debug information.",
+                    "buildType": "Release"
+                }
+            }
+        }
+    },
+    "cmake.configureArgs": [
+        "-DPICO_SDK_PATH=${workspaceFolder}/pico-sdk",
+        "-DPICO_DEOPTIMIZED_DEBUG=1"
+    ],
+    "cmake.statusbar.advanced": {
+        "debug" : {
+            "visibility": "hidden"
+        },
+        "launch": {"visibility": "hidden"}
+    },
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    "cortex-debug.enableTelemetry": false,
+    "cortex-debug.gdbPath": "gdb-multiarch",
+    "cortex-debug.variableUseNaturalFormat": true
+}
