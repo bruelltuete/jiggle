@@ -2,7 +2,9 @@
 #include "pico/stdlib.h"
 #include "pico/binary_info.h"
 #include "hardware/clocks.h"
+#include "hardware/pll.h"
 #include "hardware/rtc.h"
+#include "hardware/structs/scb.h"
 #include "tusb.h"
 #include "usb.h"
 
@@ -37,6 +39,86 @@ static void setup_rtc()
     rtc_set_datetime(&maybetoday);
 }
 
+// before 23 mA, after 10 mA
+static void setup_sleep()
+{
+    io_rw_32    wake0  = CLOCKS_WAKE_EN0_RESET;
+    io_rw_32    wake1  = CLOCKS_WAKE_EN1_RESET;
+    io_rw_32    sleep0 = CLOCKS_SLEEP_EN0_RESET;
+    io_rw_32    sleep1 = CLOCKS_SLEEP_EN1_RESET;
+
+    // not using spi.
+    wake0  &= ~(CLOCKS_WAKE_EN0_CLK_SYS_SPI0_BITS  | CLOCKS_WAKE_EN0_CLK_PERI_SPI0_BITS |
+                CLOCKS_WAKE_EN0_CLK_SYS_SPI1_BITS  | CLOCKS_WAKE_EN0_CLK_PERI_SPI1_BITS);
+    sleep0 &= ~(CLOCKS_SLEEP_EN0_CLK_SYS_SPI0_BITS | CLOCKS_SLEEP_EN0_CLK_PERI_SPI0_BITS |
+                CLOCKS_SLEEP_EN0_CLK_SYS_SPI1_BITS | CLOCKS_SLEEP_EN0_CLK_PERI_SPI1_BITS);
+    // not using pio.
+    wake0  &= ~(CLOCKS_WAKE_EN0_CLK_SYS_PIO0_BITS  | CLOCKS_WAKE_EN0_CLK_SYS_PIO1_BITS);
+    sleep0 &= ~(CLOCKS_SLEEP_EN0_CLK_SYS_PIO0_BITS | CLOCKS_SLEEP_EN0_CLK_SYS_PIO1_BITS);
+    // not using uart1
+    wake1  &= ~(CLOCKS_WAKE_EN1_CLK_SYS_UART1_BITS  | CLOCKS_WAKE_EN1_CLK_PERI_UART1_BITS);
+    sleep1 &= ~(CLOCKS_SLEEP_EN1_CLK_SYS_UART1_BITS | CLOCKS_SLEEP_EN1_CLK_PERI_UART1_BITS);
+    // not using pwm.
+    wake0  &= ~CLOCKS_WAKE_EN0_CLK_SYS_PWM_BITS;
+    sleep0 &= ~CLOCKS_SLEEP_EN0_CLK_SYS_PWM_BITS;
+    // not useful to us.
+    wake1  &= ~CLOCKS_WAKE_EN1_CLK_SYS_TBMAN_BITS;
+    sleep1 &= ~CLOCKS_SLEEP_EN1_CLK_SYS_TBMAN_BITS;
+    // not using jtag debugging. (picoprobe is swd)
+    wake0  &= ~CLOCKS_WAKE_EN0_CLK_SYS_JTAG_BITS;
+    sleep0 &= ~CLOCKS_SLEEP_EN0_CLK_SYS_JTAG_BITS;
+    // not using adc.
+    wake0  &= ~(CLOCKS_WAKE_EN0_CLK_ADC_ADC_BITS  | CLOCKS_WAKE_EN0_CLK_SYS_ADC_BITS);
+    sleep0 &= ~(CLOCKS_SLEEP_EN0_CLK_ADC_ADC_BITS | CLOCKS_SLEEP_EN0_CLK_SYS_ADC_BITS);
+    // not using i2c.
+    wake0  &= ~(CLOCKS_WAKE_EN0_CLK_SYS_I2C0_BITS  | CLOCKS_WAKE_EN0_CLK_SYS_I2C1_BITS);
+    sleep0 &= ~(CLOCKS_SLEEP_EN0_CLK_SYS_I2C0_BITS | CLOCKS_SLEEP_EN0_CLK_SYS_I2C1_BITS);
+
+    // while sleeping, we dont need:
+    sleep0 &= ~CLOCKS_SLEEP_EN0_CLK_SYS_SIO_BITS;
+    sleep0 &= ~CLOCKS_SLEEP_EN0_CLK_SYS_ROM_BITS;
+    sleep1 &= ~CLOCKS_SLEEP_EN1_CLK_SYS_XIP_BITS;
+    sleep0 &= ~CLOCKS_SLEEP_EN0_CLK_SYS_DMA_BITS;
+    sleep0 &= ~(CLOCKS_SLEEP_EN0_CLK_SYS_BUSFABRIC_BITS | CLOCKS_SLEEP_EN0_CLK_SYS_BUSCTRL_BITS);
+    sleep0 &= ~(CLOCKS_SLEEP_EN0_CLK_SYS_SRAM0_BITS | CLOCKS_SLEEP_EN0_CLK_SYS_SRAM1_BITS | CLOCKS_SLEEP_EN0_CLK_SYS_SRAM2_BITS | CLOCKS_SLEEP_EN0_CLK_SYS_SRAM3_BITS);
+    sleep1 &= ~(CLOCKS_SLEEP_EN1_CLK_SYS_SRAM4_BITS | CLOCKS_SLEEP_EN1_CLK_SYS_SRAM5_BITS);
+
+    clocks_hw->wake_en0 = wake0;
+    clocks_hw->wake_en1 = wake1;
+    clocks_hw->sleep_en0 = sleep0;
+    clocks_hw->sleep_en1 = sleep1;
+
+    hw_set_bits(&scb_hw->scr, M0PLUS_SCR_SLEEPDEEP_BITS);
+}
+
+static void setup_clocks()
+{
+    uint32_t    roscfreq = 6 * MHZ;     // ballpark, does not matter.
+    clock_configure(clk_sys, CLOCKS_CLK_SYS_CTRL_SRC_VALUE_CLKSRC_CLK_SYS_AUX, CLOCKS_CLK_SYS_CTRL_AUXSRC_VALUE_ROSC_CLKSRC, roscfreq, roscfreq);
+    clock_configure(clk_ref, CLOCKS_CLK_REF_CTRL_SRC_VALUE_ROSC_CLKSRC_PH, 0, roscfreq, roscfreq);
+
+    // something like: pico-sdk/src/rp2_common/hardware_clocks/scripts/vcocalc.py -l 48
+    pll_init(pll_sys, 1, 768 * MHZ, 4, 4);
+    const uint32_t pllfreq = 48 * MHZ;
+    clock_configure(clk_sys, CLOCKS_CLK_SYS_CTRL_SRC_VALUE_CLKSRC_CLK_SYS_AUX, CLOCKS_CLK_SYS_CTRL_AUXSRC_VALUE_CLKSRC_PLL_SYS, pllfreq, pllfreq);
+    // same as sdk, keep running directly off xosc at 12mhz.
+    clock_configure(clk_ref, CLOCKS_CLK_REF_CTRL_SRC_VALUE_XOSC_CLKSRC, 0, 12 * MHZ, 12 * MHZ);
+
+    // we are not using adc.
+    clock_stop(clk_adc);
+    // peri (ie uart) runs off xosc at fixed speed.
+    clock_configure(clk_peri, 0, CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_XOSC_CLKSRC, 12 * MHZ, 12 * MHZ);
+
+    const int rtcfreq = 12 * MHZ / KHZ;
+    clock_configure(clk_rtc, 0, CLOCKS_CLK_RTC_CTRL_AUXSRC_VALUE_XOSC_CLKSRC, 12 * MHZ, rtcfreq);
+    rtc_hw->clkdiv_m1 = rtcfreq - 1;
+
+    // usb runs off pll_sys.
+    clock_stop(clk_usb);
+    pll_deinit(pll_usb);
+    clock_configure(clk_usb, 0, CLOCKS_CLK_USB_CTRL_AUXSRC_VALUE_CLKSRC_PLL_SYS, pllfreq, 48 * MHZ);
+}
+
 static void prime_rtc_alarm(int secfromnow)
 {
     int minfromnow = secfromnow / 60;
@@ -58,6 +140,9 @@ static void prime_rtc_alarm(int secfromnow)
 int main()
 {
     bi_decl(bi_program_description("Jiggle mouse"));
+
+    setup_clocks();
+    setup_sleep();
 
     stdio_init_all();
     printf("\n\nHello, jiggle!\n");
