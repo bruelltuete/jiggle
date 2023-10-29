@@ -48,7 +48,7 @@ target_compile_definitions(jiggle PRIVATE
 
 # pull in common dependencies
 target_link_libraries(jiggle
-        pico_stdlib pico_runtime pico_multicore
+        pico_stdlib
         hardware_rtc
         tinyusb_device tinyusb_board
 )

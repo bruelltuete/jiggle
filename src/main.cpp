@@ -203,11 +203,14 @@ int main()
                     jigglestate = FINISH;
                     break;
                 case FINISH:
-                    printf("\n");
+                {
                     tud_hid_mouse_report(REPORT_ID_MOUSE, 0, -1, 0, 0, 0);
                     jigglestate = NOP;
-                    prime_rtc_alarm(90 + random_delay());
+                    int d = 90 + random_delay();
+                    printf("d, next one in %i sec\n", d);
+                    prime_rtc_alarm(d);
                     break;
+                }
             }
         }
 
