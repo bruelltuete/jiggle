@@ -137,6 +137,16 @@ static void prime_rtc_alarm(int secfromnow)
     rtc_set_alarm(&now, &rtcalarm_handler);
 }
 
+// very very pseudo...
+static int random_delay()
+{
+    static int i = 0;
+    // https://xkcd.com/221/
+    static const int delays[] = {22, -5, -25, 14, -28, 28, -22, 16, -6, 8, 1, -5, 11, -17, 7, 3};
+    i = (i + 1) % count_of(delays);
+    return delays[i];
+}
+
 int main()
 {
     bi_decl(bi_program_description("Jiggle mouse"));
@@ -196,7 +206,7 @@ int main()
                     printf("\n");
                     tud_hid_mouse_report(REPORT_ID_MOUSE, 0, -1, 0, 0, 0);
                     jigglestate = NOP;
-                    prime_rtc_alarm(1);   // FIXME: randomise
+                    prime_rtc_alarm(90 + random_delay());
                     break;
             }
         }
