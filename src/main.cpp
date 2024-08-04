@@ -171,6 +171,16 @@ int main()
         printf("sys  = %ld kHz\n", sysfreq);
     }
 
+    // FIXME: trinkey has a neopixel on gp27
+
+    // pico has led on gp25, connects to gnd, so put high to light up.
+    // (in case of pico-w, it's just wifi-cs and nothing happens.)
+    int ledpin = 25;
+    gpio_init(ledpin);
+    gpio_set_dir(ledpin, GPIO_OUT);
+    // for the normal pico led, we'll just blink it once when jiggling.
+    // and leave it switched on while idle to show that we are active.
+    gpio_put(ledpin, true);
 
     tusb_init();
 
@@ -196,6 +206,7 @@ int main()
                         printf("jiggle");
                         tud_hid_mouse_report(REPORT_ID_MOUSE, 0, 1, 0, 0, 0);
                         jigglestate = WAIT;
+                        gpio_put(ledpin, false);
                     }
                     break;
                 case WAIT:
@@ -209,6 +220,7 @@ int main()
                     int d = 90 + random_delay();
                     printf("d, next one in %i sec\n", d);
                     prime_rtc_alarm(d);
+                    gpio_put(ledpin, true);
                     break;
                 }
             }
