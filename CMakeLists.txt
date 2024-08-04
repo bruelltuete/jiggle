@@ -36,6 +36,10 @@ add_executable(jiggle
         src/usb.cpp
 )
 
+pico_generate_pio_header(jiggle
+        ${CMAKE_SOURCE_DIR}/src/neopixel.pio
+)
+
 target_compile_definitions(jiggle PRIVATE
         PARAM_ASSERTIONS_ENABLE_ALL=1
         PICO_UART_ENABLE_CRLF_SUPPORT=0
@@ -49,7 +53,7 @@ target_compile_definitions(jiggle PRIVATE
 # pull in common dependencies
 target_link_libraries(jiggle
         pico_stdlib
-        hardware_rtc
+        hardware_rtc hardware_pio
         tinyusb_device tinyusb_board
 )
 

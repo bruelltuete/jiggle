@@ -7,6 +7,10 @@
 #include "hardware/structs/scb.h"
 #include "tusb.h"
 #include "usb.h"
+#include "neopixel.pio.h"
+
+// config
+#define ENABLE_LED 1
 
 static volatile enum
 {
@@ -39,7 +43,6 @@ static void setup_rtc()
     rtc_set_datetime(&maybetoday);
 }
 
-// before 23 mA, after 10 mA
 static void setup_sleep()
 {
     io_rw_32    wake0  = CLOCKS_WAKE_EN0_RESET;
@@ -52,9 +55,11 @@ static void setup_sleep()
                 CLOCKS_WAKE_EN0_CLK_SYS_SPI1_BITS  | CLOCKS_WAKE_EN0_CLK_PERI_SPI1_BITS);
     sleep0 &= ~(CLOCKS_SLEEP_EN0_CLK_SYS_SPI0_BITS | CLOCKS_SLEEP_EN0_CLK_PERI_SPI0_BITS |
                 CLOCKS_SLEEP_EN0_CLK_SYS_SPI1_BITS | CLOCKS_SLEEP_EN0_CLK_PERI_SPI1_BITS);
+#if !ENABLE_LED
     // not using pio.
     wake0  &= ~(CLOCKS_WAKE_EN0_CLK_SYS_PIO0_BITS  | CLOCKS_WAKE_EN0_CLK_SYS_PIO1_BITS);
     sleep0 &= ~(CLOCKS_SLEEP_EN0_CLK_SYS_PIO0_BITS | CLOCKS_SLEEP_EN0_CLK_SYS_PIO1_BITS);
+#endif
     // not using uart1
     wake1  &= ~(CLOCKS_WAKE_EN1_CLK_SYS_UART1_BITS  | CLOCKS_WAKE_EN1_CLK_PERI_UART1_BITS);
     sleep1 &= ~(CLOCKS_SLEEP_EN1_CLK_SYS_UART1_BITS | CLOCKS_SLEEP_EN1_CLK_PERI_UART1_BITS);
@@ -171,16 +176,24 @@ int main()
         printf("sys  = %ld kHz\n", sysfreq);
     }
 
-    // FIXME: trinkey has a neopixel on gp27
+#if ENABLE_LED
+    // trinkey has a neopixel on gp27
+    const int neopixelpin = 27;
+    neopixel_program_init(neopixelpin);
+    // at max value it's super bright, annoyingly so.
+    const uint32_t  np_green = 0x01000000;
+    const uint32_t  np_red   = 0x000F0000;  // 0xGGRRBB__
+    set_neopixel(np_green);
 
     // pico has led on gp25, connects to gnd, so put high to light up.
     // (in case of pico-w, it's just wifi-cs and nothing happens.)
-    int ledpin = 25;
+    const int ledpin = 25;
     gpio_init(ledpin);
     gpio_set_dir(ledpin, GPIO_OUT);
     // for the normal pico led, we'll just blink it once when jiggling.
     // and leave it switched on while idle to show that we are active.
     gpio_put(ledpin, true);
+#endif
 
     tusb_init();
 
@@ -206,7 +219,10 @@ int main()
                         printf("jiggle");
                         tud_hid_mouse_report(REPORT_ID_MOUSE, 0, 1, 0, 0, 0);
                         jigglestate = WAIT;
+#if ENABLE_LED
                         gpio_put(ledpin, false);
+                        set_neopixel(np_red);
+#endif
                     }
                     break;
                 case WAIT:
@@ -220,7 +236,10 @@ int main()
                     int d = 90 + random_delay();
                     printf("d, next one in %i sec\n", d);
                     prime_rtc_alarm(d);
+#if ENABLE_LED
                     gpio_put(ledpin, true);
+                    set_neopixel(np_green);
+#endif
                     break;
                 }
             }
